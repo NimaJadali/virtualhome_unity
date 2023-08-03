@@ -1,0 +1,11 @@
+name: Female2 time: 147.9909 moved: True
+name: Female2 time: 148.1909 moved: True
+name: Female2 time: 148.3909 moved: True
+name: Female2 time: 148.5909 moved: True
+name: Female2 time: 148.7909 moved: True
+name: Female2 time: 169.7909 moved: True
+name: Female2 time: 169.9909 moved: True
+name: Female2 time: 170.1909 moved: True
+name: Female2 time: 170.3909 moved: True
+name: Female2 time: 170.5909 moved: True
+name: Female2 time: 170.7909 moved: True
