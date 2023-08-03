@@ -308,6 +308,21 @@ namespace StoryGenerator.Utilities
         }
     }
 
+    public class IdleAction : IAction
+    {
+        public ScriptObjectName Name { get; private set; }
+        public int ScriptLine { get; private set; }
+        public IObjectSelector Selector;
+
+
+        public IdleAction(int scriptLine, IObjectSelector selector, string name, int instance)
+        {
+            ScriptLine = scriptLine;
+            Selector = selector;
+            Name = new ScriptObjectName(name, instance);
+        }
+    }
+
     public class PhoneAction : IAction
     {
         public enum PhoneActionType { TALK, TEXT };
@@ -344,24 +359,23 @@ namespace StoryGenerator.Utilities
     {
         public ScriptObjectName Name { get; private set; }
         public ScriptObjectName DestName { get; private set; }
+        public Vector2? DestPos { get; private set; } // put destination position
+        public float Y { get; private set; }
         public int ScriptLine { get; private set; }
         public bool PutInside { get; private set; }
         public IObjectSelector Selector;
-        public Vector3 Rotation { get; private set; }
-        public Vector2? DestPos { get; private set; } // put destination position
-        public float Y { get; private set; }
 
 
-        public PutAction(int scriptLine, IObjectSelector selector, string name, int instance, string destName, int destInstance, bool putInside, Vector3 rotation, Vector2? destPos, float y = -1)
+        public PutAction(int scriptLine, IObjectSelector selector, string name, int instance, string destName, int destInstance, bool putInside, Vector2? destPos, float y = -1)
         {
             ScriptLine = scriptLine;
             Name = new ScriptObjectName(name, instance);
             DestName = new ScriptObjectName(destName, destInstance);
-            PutInside = putInside;
-            Selector = selector;
-            Rotation = rotation;
             DestPos = destPos;
             Y = y;
+            PutInside = putInside;
+            Selector = selector;
+
         }
     }
 
@@ -433,7 +447,6 @@ namespace StoryGenerator.Utilities
      *  RIGHT_HAND_OBJECT (GameObject)        object in right hand
      *  LEFT_HAND_OBJECT (GameObject)         object in left hand
      *  PUT_POSITION (Vector3)                where to put object
-     *  PUT_ROTATION (Vector3)                object rotation
      *  TOUCH_POSITION (Vector3)              where to touch object
      *  
      *  Action flags:
@@ -996,6 +1009,11 @@ namespace StoryGenerator.Utilities
         public void AddAction(DrinkAction a)
         {
             script.Add(new ScriptPair() { Action = a, ProcessMethod = ((ac, s) => this.ProcessDrink((DrinkAction)ac, s)) });
+        }
+
+        public void AddAction(IdleAction a)
+        {
+            script.Add(new ScriptPair() { Action = a, ProcessMethod = ((ac, s) => this.ProcessIdle((IdleAction)ac, s)) });
         }
 
         public void AddAction(PhoneAction a)
@@ -2305,6 +2323,26 @@ namespace StoryGenerator.Utilities
             return StateList.Empty;
         }
 
+        private IEnumerable<IStateGroup> ProcessIdle(IdleAction a, State current)
+        {
+            GameObject go = current.GetScriptGameObject(a.Name);
+
+            if (go == null)
+            {
+                report.AddItem("PROCESS IDLE", $"Not found object: {a.Name.Name}");
+            }
+            else if (go == current.GetGameObject("RIGHT_HAND_OBJECT") || go == current.GetGameObject("LEFT_HAND_OBJECT"))
+            {
+                return ProcessIdleAction(a, current);
+            }
+            else
+            {
+                GrabAction ga = new GrabAction(a.ScriptLine, a.Selector, a.Name.Name, a.Name.Instance);
+                return CreateStateGroup(current, s => ProcessGrab(ga, s), s => ProcessIdleAction(a, s));
+            }
+            return StateList.Empty;
+        }
+
         // Grab (if necessary) + phone action (talk, text)
         private IEnumerable<IStateGroup> ProcessPhone(PhoneAction a, State current)
         {
@@ -2356,6 +2394,28 @@ namespace StoryGenerator.Utilities
             else if (go == current.GetGameObject("LEFT_HAND_OBJECT"))
             {
                 State s = new State(current, a, current.InteractionPosition, ExecuteDrink);
+                s.AddObject("INTERACTION_HAND", FullBodyBipedEffector.LeftHand);
+                yield return s;
+            }
+        }
+
+        private IEnumerable<IStateGroup> ProcessIdleAction(IdleAction a, State current)
+        {
+            GameObject go = current.GetScriptGameObject(a.Name);
+
+            if (go == null)
+            {
+                report.AddItem("PROCESS IDLE", $"Not found object: {a.Name.Name}");
+            }
+            else if (go == current.GetGameObject("RIGHT_HAND_OBJECT"))
+            {
+                State s = new State(current, a, current.InteractionPosition, ExecuteIdle);
+                s.AddObject("INTERACTION_HAND", FullBodyBipedEffector.RightHand);
+                yield return s;
+            }
+            else if (go == current.GetGameObject("LEFT_HAND_OBJECT"))
+            {
+                State s = new State(current, a, current.InteractionPosition, ExecuteIdle);
                 s.AddObject("INTERACTION_HAND", FullBodyBipedEffector.LeftHand);
                 yield return s;
             }
@@ -2469,16 +2529,12 @@ namespace StoryGenerator.Utilities
 
                 if (fbbe != null)
                 {
-                    // Rotate go by the specified rotation vector (default is no rotation)
-                    sod.GameObject.transform.localEulerAngles = a.Rotation;
-
                     // We need to calculate putback position
                     foreach (Vector3 pos in GameObjectUtils.CalculatePutPositions(current.InteractionPosition, sod.GameObject, sodDest.GameObject, a.PutInside, false, a.DestPos, a.Y))
                     {
                         State s = new State(current, a, current.InteractionPosition, ExecutePut);
                         s.AddScriptGameObject(a.Name, sod.GameObject, pos, current.InteractionPosition, false);
                         s.AddObject("PUT_POSITION", pos);
-                        s.AddObject("PUT_ROTATION", a.Rotation);
                         s.AddObject("INTERACTION_HAND", fbbe);
                         if (fbbe == FullBodyBipedEffector.RightHand)
                             s.RemoveObject("RIGHT_HAND_OBJECT");
@@ -2979,6 +3035,29 @@ namespace StoryGenerator.Utilities
             }
         }
 
+        private IEnumerator ExecuteIdle(State s)
+        {
+            var intHand = (FullBodyBipedEffector)s.GetObject("INTERACTION_HAND");
+            if (cameraControls != null)
+            {
+                for (int cam_id = 0; cam_id < cameraControls.Count; cam_id++)
+                    if (cameraControls[cam_id] != null)
+                        cameraControls[cam_id].SetVisibleArea(characterControl.UpperPartArea());
+            }
+            recorder.MarkActionStart(InteractionType.IDLE, s.Action.ScriptLine);
+            if (intHand == FullBodyBipedEffector.LeftHand)
+                yield return characterControl.IdleLeft();
+            else if (intHand == FullBodyBipedEffector.RightHand)
+                yield return characterControl.IdleRight();
+
+            if (cameraControls != null)
+            {
+                for (int cam_id = 0; cam_id < cameraControls.Count; cam_id++)
+                    if (cameraControls[cam_id] != null)
+                        cameraControls[cam_id].ClearVisibleArea();
+            }
+        }
+
         private IEnumerator ExecutePhoneAction(State s)
         {
             PhoneAction pa = s.Action as PhoneAction;
@@ -3046,7 +3125,6 @@ namespace StoryGenerator.Utilities
             IAction ga = s.Action;
             GameObject go = s.GetScriptGameObject(ga.Name);
             Vector3 putPosition = (Vector3)s.GetObject("PUT_POSITION");
-            Vector3 putRotation = (Vector3)s.GetObject("PUT_ROTATION");
             var goi = go.GetComponent<HandInteraction>().invisibleCpy;
             Bounds focusBounds;
 
@@ -3060,8 +3138,6 @@ namespace StoryGenerator.Utilities
                 focusBounds = GameObjectUtils.GetBounds(go);
             }
             goi.transform.position = putPosition;
-            // set rotation
-            goi.transform.localEulerAngles = putRotation;
             recorder.MarkActionStart(InteractionType.PUTBACK, ga.ScriptLine);
 
             if (cameraControls != null)
@@ -4124,6 +4200,9 @@ namespace StoryGenerator.Utilities
                 case InteractionType.DRINK:
                     sExecutor.AddAction(new DrinkAction(sl.LineNumber, sExecutor.GetObjectSelector(name0, instance0), name0, instance0));
                     break;
+                case InteractionType.IDLE:
+                    sExecutor.AddAction(new IdleAction(sl.LineNumber, sExecutor.GetObjectSelector(name0, instance0), name0, instance0));
+                    break;
                 case InteractionType.TALK:
                     sExecutor.AddAction(new PhoneAction(sl.LineNumber, sExecutor.GetObjectSelector(name0, instance0), name0, instance0, PhoneAction.PhoneActionType.TALK));
                     break;
@@ -4138,47 +4217,35 @@ namespace StoryGenerator.Utilities
                 case InteractionType.PUTIN:
                     if (string.IsNullOrEmpty(name1))
                         throw new ScriptReaderException($"No second argument for [{sl.Interaction}]");
+                    
                     if (sl.Parameters.Count > 2)
                     {
                         string strpos = sl.Parameters[sl.Parameters.Count-1].Item1;
-                        NumberFormatInfo fmt = new NumberFormatInfo();
-                        fmt.NegativeSign = "-";
                         Debug.Log("POSITION: " + strpos);
                         string[] positions = strpos.Split(',');
-                        Vector3 newRotation = new Vector3(0.0f, 0.0f, 0.0f); ;
-                        if (strpos.Substring(0,4).Equals("rot:"))
-                        {
-                            newRotation = new Vector3(float.Parse(positions[0].Substring(4), fmt), float.Parse(positions[1], fmt), float.Parse(positions[2], fmt));
-                            sl.Parameters.RemoveAt(sl.Parameters.Count - 1);
-                            if (sl.Parameters.Count > 2)
-                            {
-                                strpos = sl.Parameters[sl.Parameters.Count - 1].Item1;
-                                positions = strpos.Split(',');
-                            }
-                            else
-                            {
-                                sExecutor.AddAction(new PutAction(sl.LineNumber, sExecutor.GetObjectSelector(name1, instance1), name0, instance0, name1, instance1, sl.Interaction == InteractionType.PUTIN, new Vector3(0.0f, 0.0f, 0.0f), null, -1));
-                            }
-                        }
                         if (positions.Length == 3)
                         {
-                            Vector2 pos = new Vector2(float.Parse(positions[0].Substring(4), fmt), float.Parse(positions[2], fmt));
+                            NumberFormatInfo fmt = new NumberFormatInfo();
+                            fmt.NegativeSign = "-";
+                            Vector2 pos = new Vector2(float.Parse(positions[0], fmt), float.Parse(positions[2], fmt));
                             float y = float.Parse(positions[1], fmt);
-                            sExecutor.AddAction(new PutAction(sl.LineNumber, sExecutor.GetObjectSelector(name1, instance1), name0, instance0, name1, instance1, sl.Interaction == InteractionType.PUTIN, newRotation, pos, y)); //TODO: add destPos
+                            sExecutor.AddAction(new PutAction(sl.LineNumber, sExecutor.GetObjectSelector(name1, instance1), name0, instance0, name1, instance1, sl.Interaction == InteractionType.PUTIN, pos, y)); //TODO: add destPos
                         }
                         else if (positions.Length == 2)
                         {
-                            Vector2 pos = new Vector2(float.Parse(positions[0].Substring(4), fmt), float.Parse(positions[1], fmt));
-                            sExecutor.AddAction(new PutAction(sl.LineNumber, sExecutor.GetObjectSelector(name1, instance1), name0, instance0, name1, instance1, sl.Interaction == InteractionType.PUTIN, newRotation, pos, -1)); //TODO: add destPos
+                            NumberFormatInfo fmt = new NumberFormatInfo();
+                            fmt.NegativeSign = "-";
+                            Vector2 pos = new Vector2(float.Parse(positions[0], fmt), float.Parse(positions[1], fmt));
+                            sExecutor.AddAction(new PutAction(sl.LineNumber, sExecutor.GetObjectSelector(name1, instance1), name0, instance0, name1, instance1, sl.Interaction == InteractionType.PUTIN, pos, -1)); //TODO: add destPos
                         }
                         else
                         {
-                            sExecutor.AddAction(new PutAction(sl.LineNumber, sExecutor.GetObjectSelector(name1, instance1), name0, instance0, name1, instance1, sl.Interaction == InteractionType.PUTIN, newRotation, null, -1));
+                            sExecutor.AddAction(new PutAction(sl.LineNumber, sExecutor.GetObjectSelector(name1, instance1), name0, instance0, name1, instance1, sl.Interaction == InteractionType.PUTIN, null, -1));
                         }
                     }
                     else
                     {
-                        sExecutor.AddAction(new PutAction(sl.LineNumber, sExecutor.GetObjectSelector(name1, instance1), name0, instance0, name1, instance1, sl.Interaction == InteractionType.PUTIN, new Vector3(0.0f,0.0f,0.0f), null, -1));
+                        sExecutor.AddAction(new PutAction(sl.LineNumber, sExecutor.GetObjectSelector(name1, instance1), name0, instance0, name1, instance1, sl.Interaction == InteractionType.PUTIN, null, -1));
                     }
                     
                     break;
@@ -4271,9 +4338,8 @@ namespace StoryGenerator.Utilities
             string pattAction = @"\[(\w+)\]";
             string pattParams = @"<([\w\s]+)>\s*\((\d+)\)\s*(:\d+:)?";
             string pattchar = @"<char(\d+)>";
-            string pattPos = @"pos:(-?\d+\.?\d*(E-\d+)?),(-?\d+\.?\d*(E-\d+)?),(-?\d+\.?\d*(E-\d+)?)";
-            string pattPosXZ = @"pos:(-?\d+\.?\d*(E-\d+)?),(-?\d+\.?\d*(E-\d+)?)";
-            string pattRot = @"rot:(-?\d+\.?\d*(E-\d+)?),(-?\d+\.?\d*(E-\d+)?),(-?\d+\.?\d*(E-\d+)?)";
+            string pattPos = @"(-?\d+\.?\d*(E-\d+)?),(-?\d+\.?\d*(E-\d+)?),(-?\d+\.?\d*(E-\d+)?)";
+            string pattPosXZ = @"(-?\d+\.?\d*(E-\d+)?),(-?\d+\.?\d*(E-\d+)?)";
 
             string[] sentences = line.Split('|');
 
@@ -4363,15 +4429,8 @@ namespace StoryGenerator.Utilities
                     }
                 }
 
-                // Parse rotation x,y,z
-                r = new Regex(pattRot);
-                m = r.Match(sentence);
+              
 
-                if (m.Success)
-                {
-                    // 2.5,3.4,1.5
-                    paramList.Add(Tuple.Create(m.Groups[0].Value, 0));
-                }
 
                 InteractionType action = (InteractionType)Enum.Parse(typeof(InteractionType), actionStr, true);
                 return new ScriptLine() { Interaction = action, Parameters = paramList, LineNumber = lineNo, modifier = modifier };

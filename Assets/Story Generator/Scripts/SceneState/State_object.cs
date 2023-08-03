@@ -4,6 +4,8 @@ using StoryGenerator.Helpers;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using System;
+using System.IO;
 
 namespace StoryGenerator.SceneState
 {
@@ -337,6 +339,21 @@ namespace StoryGenerator.SceneState
 
 		void ToggleState(StateType st)
 		{
+            string dateTime = Time.time.ToString();
+            string path = "Output/" + "toggle" + ".txt";
+            if (!File.Exists(path)) {
+                // Create a file to write to.
+                using (StreamWriter w = File.CreateText(path))
+                {
+                    w.WriteLine("time: " + dateTime + " objState: " + GetObjType());
+                }	
+            } else {
+                using (StreamWriter w = File.AppendText(path)) {
+                    w.WriteLine("time: " + dateTime + " objState: " + GetObjType());
+                }
+            }
+            Debug.Log("time: " + dateTime);
+
 			switch (st)
 			{
 				case StateType.Open:

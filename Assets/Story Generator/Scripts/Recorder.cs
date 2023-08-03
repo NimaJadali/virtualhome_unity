@@ -256,6 +256,10 @@ namespace StoryGenerator.Recording
                 }
 
             }
+            const string PREFIX_POSE = "pose_";
+            const string PREFIX_SCENE_STATE = "scenestate_";
+            const string FILE_EXT_TXT = ".txt";
+            const string FILE_EXT_JSON = ".json";
 
             // Need to check since recording can be disabled due to error such as stuck error.
             while (recording && currentframeNum <= MaxFrameNumber) {
@@ -279,9 +283,22 @@ namespace StoryGenerator.Recording
                     }
                     if (savePoseData) {
                         UpdatePoseData(frameNum);
+
+                        string currentFileName = Path.Combine(OutputDirectory, PREFIX_POSE) + FileName + frameNum + FILE_EXT_TXT;
+                        using (StreamWriter sw = new StreamWriter(currentFileName)) {
+                            sw.WriteLine(PoseData.BoneNamesToString());
+                            foreach (PoseData pd in poseData) {
+                                sw.WriteLine(pd.ToString());
+                            }
+                        }
                     }
                     if (saveSceneStates) {
                         sceneStateSequence.SetFrameNum(frameNum);
+
+                        string currentFileName = Path.Combine(OutputDirectory, PREFIX_SCENE_STATE) + FileName + frameNum + FILE_EXT_JSON;
+                        using (StreamWriter sw = new StreamWriter(currentFileName)) {
+                            sw.WriteLine(JsonUtility.ToJson(sceneStateSequence, true));
+                        }
                     }
                 }
 
@@ -374,12 +391,13 @@ namespace StoryGenerator.Recording
 
         public void CreateTextualGTs()
         {
-            const string PREFIX_ACTION = "ftaa_";
-            const string PREFIX_CAMERA = "cd_";
-            const string PREFIX_POSE = "pd_";
-            const string PREFIX_SCENE_STATE = "ss_";
+            const string PREFIX_ACTION = "actions_";
+            const string PREFIX_CAMERA = "camera_";
+            // const string PREFIX_POSE = "pose_";
+            // const string PREFIX_SCENE_STATE = "scenestate_";
+            // const string PREFIX_ENVIRONMENT_GRAPH = "environmentgraph_";
             const string FILE_EXT_TXT = ".txt";
-            const string FILE_EXT_JSON = ".json";
+            // const string FILE_EXT_JSON = ".json";
 
             string currentFileName = Path.Combine(OutputDirectory, PREFIX_ACTION) + FileName + FILE_EXT_TXT;
 
@@ -405,28 +423,38 @@ namespace StoryGenerator.Recording
                 }
             }
 
-            currentFileName = Path.Combine(OutputDirectory, PREFIX_POSE) + FileName + FILE_EXT_TXT;
+            // currentFileName = Path.Combine(OutputDirectory, PREFIX_POSE) + FileName + FILE_EXT_TXT;
 
-            if (poseData.Count == 0) {
-                File.Delete(currentFileName);
-            } else {
-                using (StreamWriter sw = new StreamWriter(currentFileName)) {
-                    sw.WriteLine(PoseData.BoneNamesToString());
-                    foreach (PoseData pd in poseData) {
-                        sw.WriteLine(pd.ToString());
-                    }
-                }
-            }
+            // if (poseData.Count == 0) {
+            //     File.Delete(currentFileName);
+            // } else {
+            //     using (StreamWriter sw = new StreamWriter(currentFileName)) {
+            //         sw.WriteLine(PoseData.BoneNamesToString());
+            //         foreach (PoseData pd in poseData) {
+            //             sw.WriteLine(pd.ToString());
+            //         }
+            //     }
+            // }
 
-            currentFileName = Path.Combine(OutputDirectory, PREFIX_SCENE_STATE) + FileName + FILE_EXT_JSON;
+            // currentFileName = Path.Combine(OutputDirectory, PREFIX_SCENE_STATE) + FileName + FILE_EXT_JSON;
 
-            if (sceneStateSequence.states.Count == 0) {
-                File.Delete(currentFileName);
-            } else {
-                using (StreamWriter sw = new StreamWriter(currentFileName)) {
-                    sw.WriteLine(JsonUtility.ToJson(sceneStateSequence, true));
-                }
-            }
+            // if (sceneStateSequence.states.Count == 0) {
+            //     File.Delete(currentFileName);
+            // } else {
+            //     using (StreamWriter sw = new StreamWriter(currentFileName)) {
+            //         sw.WriteLine(JsonUtility.ToJson(sceneStateSequence, true));
+            //     }
+            // }
+
+            // currentFileName = Path.Combine(OutputDirectory, PREFIX_ENVIRONMENT_GRAPH) + FileName + FILE_EXT_JSON;
+
+            // if (sceneStateSequence.states.Count == 0) {
+            //     File.Delete(currentFileName);
+            // } else {
+            //     using (StreamWriter sw = new StreamWriter(currentFileName)) {
+            //         sw.WriteLine(JsonUtility.ToJson(sceneStateSequence, true));
+            //     }
+            // }
         }
 
         // ======================================================================================== //
@@ -442,7 +470,31 @@ namespace StoryGenerator.Recording
         {
             if (Animator != null)
                 poseData.Add(new PoseData(actualFrameNum, Animator));
+                poseData.Remove(new PoseData(actualFrameNum-1, Animator));
         }
 
+    }
+
+     public static class TimeUtils  {
+        
+        public static int GetUnixTime()
+        {
+            return (int) (DateTime.UtcNow - new DateTime(2022, 08, 15)).TotalSeconds;
+        }
+
+        public static int GetCurrentDayNumber()
+        {
+            return (int) DateTime.Now.DayOfWeek;
+        }
+    
+        public static string GetCurrentDayName()
+        {
+            return DateTime.Now.DayOfWeek.ToString();
+        }
+    
+        public static string GetCurrentTime()
+        {
+            return DateTime.Now.ToString("HH:mm");
+        }
     }
 }

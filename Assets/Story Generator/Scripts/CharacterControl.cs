@@ -12,6 +12,7 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.AI;
 using StoryGenerator.Scripts;
+using System.IO;
 
 namespace StoryGenerator
 {
@@ -123,7 +124,7 @@ namespace StoryGenerator
             IKEffector m_ike_shoulderRight;
             // Hands IKEffectors are needed to set "maintain relative position"
             // which enables better hand positioning while sitting
-            // This is a quick workaround. The proper why of setting it would be using
+            // This is a quick workaround. The proper way of setting it would be using
             // Effector Offset from FinalIK and set its offset position based on ikTargetParent position.
             //
             // Set as public so that other methods in CharacterControl can use it.
@@ -239,7 +240,9 @@ namespace StoryGenerator
         public bool Randomize { get; internal set; }
         public DoorControl DoorControl { get; } = new DoorControl();
         public State_char stateChar { get; internal set; } = null;
-
+        
+        float timeBeforeRecord = 0.2f;
+        
         Animator m_animator;
         Rigidbody m_rb;
         NavMeshAgent m_nma;
@@ -273,6 +276,8 @@ namespace StoryGenerator
         const string ANIM_STR_SIT_WEIGHT = "SitWeight";
         const string ANIM_STR_HAND_WEIGHT = "HandWeight";
 
+        string base_path;
+
         #region UnityEventFunctions
         void Awake()
         {
@@ -294,6 +299,18 @@ namespace StoryGenerator
                                     RigidbodyConstraints.FreezeRotationZ;
             m_anm_isCharSittingDown = false;
             m_ikTargets = new IkTargets(gameObject, Randomize);
+
+            for (int i = 0; i <= 100; i++) {
+                base_path = "Outputs/CharPos_" + i + ".txt";
+                if (!File.Exists(base_path)) {
+                    File.Create(base_path);
+                    break;
+                } else if (i == 100) {
+                    base_path = "Outputs/CharPos_Final.txt";
+                    File.Create(base_path);
+                    break;
+                }
+            }
         }
 
         public void SetSpeed(float speed_value=1.0f)
@@ -301,6 +318,30 @@ namespace StoryGenerator
             m_is.speed = speed_value;
             m_animator.speed = speed_value;
 
+        }
+
+        void Update() {
+            timeBeforeRecord = timeBeforeRecord - Time.deltaTime;
+            if (timeBeforeRecord <= 0) {
+                timeBeforeRecord = .2f;
+                string dateTime = Time.time.ToString();
+                // every .2 second add transform pos to list
+                string path = base_path;
+                // if (!File.Exists(path)) {
+                //     // Create a file to write to.
+                //     using (StreamWriter w = File.CreateText(path))
+                //     {
+                //         w.WriteLine("pos: " + transform.position + " time: " + dateTime);
+                //     }	
+                // } else {
+                //     using (StreamWriter w = File.AppendText(path)) {
+                //         w.WriteLine("pos: " + transform.position + " time: " + dateTime);
+                //     }
+                // }
+                using (StreamWriter w = File.AppendText(path)) {
+                    w.WriteLine("pos: " + transform.position + " time: " + dateTime);
+                }
+            }
         }
 
         void LateUpdate()
@@ -664,6 +705,16 @@ namespace StoryGenerator
         public IEnumerator DrinkRight()
         {
             yield return SimpleAction("DrinkRight");
+        }
+
+        public IEnumerator IdleLeft()
+        {
+            yield return SimpleAction("IdleLeft");
+        }
+
+        public IEnumerator IdleRight()
+        {
+            yield return SimpleAction("IdleRight");
         }
 
         public IEnumerator TextLeft()
